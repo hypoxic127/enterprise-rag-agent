@@ -102,7 +102,7 @@ export function ChatContainer() {
     const userMessage: Message = {
       id: Date.now().toString(),
       role: "user",
-      content: query || "请分析这张图片",
+      content: query || "Analyze this image",
       imageUrl: imageBase64,
     };
     setMessages((prev) => [...prev, userMessage]);
@@ -119,7 +119,7 @@ export function ChatContainer() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          query: query || "请分析这张图片",
+          query: query || "Analyze this image",
           session_id: sessionId,
           image_base64: imageBase64 || null,
         }),

@@ -161,10 +161,10 @@ Open `http://localhost:3000` and try:
 
 | Query | Tests |
 |-------|-------|
-| *"苹果最新的全息手机叫什么？卖多少钱？"* | Local document retrieval + citation |
-| *"今天吉隆坡的天气如何？"* | Tavily web search fallback |
-| *"它的屏幕尺寸呢？"* | Multi-turn memory (follow-up) |
-| 📎 Upload an image + *"分析这张图片"* | Multimodal Vision analysis |
+| *"What is the latest holographic phone from Apple? How much does it cost?"* | Local document retrieval + citation |
+| *"What's the weather in Kuala Lumpur today?"* | Tavily web search fallback |
+| *"What about its screen size?"* | Multi-turn memory (follow-up) |
+| 📎 Upload an image + *"Analyze this image"* | Multimodal Vision analysis |
 
 ---
 

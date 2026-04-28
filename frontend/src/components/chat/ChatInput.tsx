@@ -17,7 +17,7 @@ export function ChatInput({ onSendMessage, isLoading }: ChatInputProps) {
 
   const handleSend = () => {
     if ((!input.trim() && !imagePreview) || isLoading) return;
-    onSendMessage(input.trim() || "请分析这张图片", imagePreview || undefined);
+    onSendMessage(input.trim() || "Analyze this image", imagePreview || undefined);
     setInput("");
     setImagePreview(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
