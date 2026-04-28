@@ -1,5 +1,6 @@
 import React from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { User, Bot, FileText, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +18,7 @@ export interface Message {
   role: Role;
   content: string;
   sources?: Source[];
+  imageUrl?: string;
 }
 
 interface ChatMessageProps {
@@ -52,8 +54,17 @@ export function ChatMessage({ message }: ChatMessageProps) {
               : "bg-zinc-800 border border-white/10 text-zinc-100 rounded-tl-sm"
           )}
         >
-          <div className="prose prose-invert max-w-none text-sm break-words whitespace-pre-wrap">
-            <ReactMarkdown>{message.content}</ReactMarkdown>
+          {message.imageUrl && (
+            <div className="mb-2 overflow-hidden rounded-lg border border-white/10">
+              <img
+                src={message.imageUrl}
+                alt="Uploaded"
+                className="max-h-64 w-auto rounded-lg object-contain"
+              />
+            </div>
+          )}
+          <div className="prose prose-invert prose-sm md:prose-base max-w-none break-words whitespace-pre-wrap prose-pre:bg-zinc-900/50 prose-pre:border prose-pre:border-white/10 prose-pre:backdrop-blur-sm prose-a:text-blue-400 hover:prose-a:text-blue-300">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
           </div>
         </div>
       </div>
@@ -72,9 +83,9 @@ export function ChatMessage({ message }: ChatMessageProps) {
               {message.sources.map((source) => (
                 <div
                   key={source.id}
-                  className="flex gap-3 px-4 py-3 transition-colors hover:bg-white/[0.02]"
+                  className="group/source flex cursor-pointer gap-3 px-4 py-3 transition-all hover:bg-emerald-500/[0.04]"
                 >
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-emerald-500/15 text-[10px] font-bold text-emerald-400">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-emerald-500/15 text-[10px] font-bold text-emerald-400 transition-colors group-hover/source:bg-emerald-500/25">
                     {source.id}
                   </span>
                   <div className="min-w-0 flex-1">

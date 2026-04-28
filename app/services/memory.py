@@ -69,15 +69,19 @@ class ChatMemoryStore:
             logger.info("Created new session: %s", session_id)
             return session
 
-    def add_message(self, session_id: str, role: str, content: str) -> None:
+    def add_message(self, session_id: str, role: str, content: str, sources: list = None, image_url: str = None) -> None:
         """Add a message to a session's history."""
         session = self.get_or_create_session(session_id)
         with self._lock:
-            session.messages.append({
+            msg = {
                 "role": role,
                 "content": content,
+                "sources": sources or [],
                 "timestamp": time.time(),
-            })
+            }
+            if image_url:
+                msg["image_url"] = image_url
+            session.messages.append(msg)
             # Enforce sliding window
             if len(session.messages) > MAX_MESSAGES_PER_SESSION:
                 session.messages = session.messages[-MAX_MESSAGES_PER_SESSION:]
@@ -128,10 +132,17 @@ class ChatMemoryStore:
                 return None
             session = self._sessions[session_id]
             session.last_active = time.time()
-            return [
-                {"role": msg["role"], "content": msg["content"]}
-                for msg in session.messages
-            ]
+            result = []
+            for msg in session.messages:
+                entry = {
+                    "role": msg["role"],
+                    "content": msg["content"],
+                    "sources": msg.get("sources", []),
+                }
+                if msg.get("image_url"):
+                    entry["image_url"] = msg["image_url"]
+                result.append(entry)
+            return result
 
     def delete_session(self, session_id: str) -> bool:
         """Delete a session."""

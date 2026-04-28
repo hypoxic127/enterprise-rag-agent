@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
 
 /* Prevent body scroll caused by Next.js dev tools badge or other injections */
 html, body {

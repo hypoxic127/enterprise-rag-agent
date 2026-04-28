@@ -4,6 +4,14 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { ChatInput } from "./ChatInput";
 import { ChatMessage, type Message } from "./ChatMessage";
 import { Sidebar, type Session } from "./Sidebar";
+import { Sparkles, Search, FileText, Database } from "lucide-react";
+
+const SUGGESTIONS = [
+  { icon: Sparkles, text: "What is Advanced RAG and how does it work?" },
+  { icon: Database, text: "Explain hybrid search and RRF fusion" },
+  { icon: Search, text: "Search the web for the latest tech news" },
+  { icon: FileText, text: "Summarize the vector store implementation" },
+];
 
 const WELCOME_MESSAGE: Message = {
   id: "welcome",
@@ -59,11 +67,13 @@ export function ChatContainer() {
     try {
       const res = await fetch(`${apiBase}/api/sessions/${sid}/messages`);
       if (res.ok) {
-        const data: { role: string; content: string }[] = await res.json();
+        const data: { role: string; content: string; sources?: any[]; image_url?: string }[] = await res.json();
         const loaded: Message[] = data.map((msg, i) => ({
           id: `${sid}-${i}`,
           role: msg.role as "user" | "assistant",
           content: msg.content,
+          sources: msg.sources,
+          imageUrl: msg.image_url,
         }));
         setMessages(loaded.length > 0 ? loaded : [WELCOME_MESSAGE]);
       } else {
@@ -86,13 +96,14 @@ export function ChatContainer() {
     }
   };
 
-  const handleSendMessage = async (query: string) => {
-    if (!query.trim()) return;
+  const handleSendMessage = async (query: string, imageBase64?: string) => {
+    if (!query.trim() && !imageBase64) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
       role: "user",
-      content: query,
+      content: query || "请分析这张图片",
+      imageUrl: imageBase64,
     };
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
@@ -108,8 +119,9 @@ export function ChatContainer() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          query,
+          query: query || "请分析这张图片",
           session_id: sessionId,
+          image_base64: imageBase64 || null,
         }),
       });
 
@@ -220,9 +232,27 @@ export function ChatContainer() {
 
         <div className="flex-1 overflow-y-auto px-4 py-6 scroll-smooth">
           <div className="mx-auto flex max-w-3xl flex-col space-y-6">
-            {messages.map((message) => (
+            {messages.map((message, index) => (
               <div key={message.id} className="animate-fade-in">
                 <ChatMessage message={message} />
+                {index === 0 && message.id === "welcome" && messages.length === 1 && (
+                  <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-3 px-4 md:px-0">
+                    {SUGGESTIONS.map((suggestion, i) => (
+                      <button
+                        key={i}
+                        onClick={() => handleSendMessage(suggestion.text)}
+                        className="group flex items-center gap-3 rounded-xl border border-white/5 bg-zinc-900/50 p-4 text-left transition-all hover:bg-zinc-800/80 hover:border-blue-500/30 hover:shadow-[0_0_15px_rgba(59,130,246,0.1)]"
+                      >
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-400 transition-colors group-hover:bg-blue-500/20 group-hover:text-blue-300">
+                          <suggestion.icon className="h-4 w-4" />
+                        </div>
+                        <span className="text-sm font-medium text-zinc-400 transition-colors group-hover:text-zinc-200">
+                          {suggestion.text}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
             <div ref={messagesEndRef} />

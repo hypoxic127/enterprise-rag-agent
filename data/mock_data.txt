@@ -1,0 +1,5 @@
+This is the Advanced RAG feature for the Enterprise RAG Agent.
+Advanced RAG encompasses multiple techniques including hybrid search (combining BM25 and Vector search), Reciprocal Rank Fusion (RRF), and Citation Query Engine.
+It uses Qdrant as the vector database.
+The iPhone 18 released in 2026 features advanced spatial projection technology and starts at 19999 RMB.
+These mock details help verify the system's ability to fetch and cite correct information.
