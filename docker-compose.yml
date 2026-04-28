@@ -8,6 +8,16 @@ services:
     volumes:
       - ./qdrant_data:/qdrant/storage
 
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+
   backend:
     build: .
     container_name: rag-backend
@@ -17,9 +27,14 @@ services:
       - .env
     environment:
       - QDRANT_HOST=qdrant
+      - REDIS_URL=redis://redis:6379/0
       - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
     volumes:
       - ./data:/app/data
     depends_on:
       - qdrant
+      - redis
     restart: unless-stopped
+
+volumes:
+  redis_data:

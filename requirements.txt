@@ -16,3 +16,4 @@ loguru>=0.7.2
 prometheus-fastapi-instrumentator>=7.0.0
 arize-phoenix>=4.0.0
 openinference-instrumentation-llama-index>=2.0.0
+redis>=5.0.0

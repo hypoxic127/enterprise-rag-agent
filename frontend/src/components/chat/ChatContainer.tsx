@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { ChatInput } from "./ChatInput";
 import { ChatMessage, type Message } from "./ChatMessage";
 import { Sidebar, type Session } from "./Sidebar";
-import { Sparkles, Search, FileText, Database } from "lucide-react";
+import { Sparkles, Search, FileText, Database, Bot } from "lucide-react";
 
 const SUGGESTIONS = [
   { icon: Sparkles, text: "What is Advanced RAG and how does it work?" },
@@ -233,7 +233,7 @@ export function ChatContainer() {
         <div className="flex-1 overflow-y-auto px-4 py-6 scroll-smooth">
           <div className="mx-auto flex max-w-3xl flex-col space-y-6">
             {messages.map((message, index) => (
-              <div key={message.id} className="animate-fade-in">
+              <div key={message.id}>
                 <ChatMessage message={message} />
                 {index === 0 && message.id === "welcome" && messages.length === 1 && (
                   <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-3 px-4 md:px-0">
@@ -255,6 +255,21 @@ export function ChatContainer() {
                 )}
               </div>
             ))}
+            {/* Typing indicator */}
+            {isLoading && (
+              <div className="flex gap-4 px-4 md:px-0 animate-fade-in-up">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-purple-500/30 bg-purple-500/20 text-purple-300 shadow-sm">
+                  <Bot className="h-4 w-4" />
+                </div>
+                <div className="rounded-2xl rounded-tl-sm bg-zinc-800 border border-white/10 px-5 py-4 shadow-sm">
+                  <div className="typing-indicator">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                </div>
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
         </div>

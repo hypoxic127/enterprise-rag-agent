@@ -127,7 +127,7 @@ export function Sidebar({
         {/* Footer */}
         <div className="border-t border-white/5 p-3">
           <p className="text-center text-[10px] tracking-wider text-zinc-700">
-            Enterprise RAG Agent v2.0
+            Enterprise RAG Agent v2.1
           </p>
         </div>
       </div>

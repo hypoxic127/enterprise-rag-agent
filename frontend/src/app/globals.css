@@ -32,6 +32,8 @@ html, body {
   
   --animate-fade-in: fade-in 0.3s ease-out;
   --animate-slide-up: slide-up 0.4s ease-out;
+  --animate-fade-in-up: fade-in-up 0.4s ease-out both;
+  --animate-typing-dot: typing-dot 1.4s infinite ease-in-out both;
 
   @keyframes fade-in {
     from { opacity: 0; }
@@ -40,6 +42,14 @@ html, body {
   @keyframes slide-up {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fade-in-up {
+    from { opacity: 0; transform: translateY(12px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes typing-dot {
+    0%, 80%, 100% { transform: scale(0.4); opacity: 0.3; }
+    40% { transform: scale(1); opacity: 1; }
   }
 }
 
@@ -81,12 +91,17 @@ html, body {
   line-height: 1.6;
 }
 .prose pre {
-  background-color: #000;
+  position: relative;
+  background-color: #0d1117;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  padding: 1rem;
+  padding: 0;
   overflow-x: auto;
   margin: 1em 0;
+  transition: box-shadow 0.3s ease;
+}
+.prose pre:hover {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.08);
 }
 .prose code {
   background-color: var(--color-muted);
@@ -119,3 +134,74 @@ html, body {
   color: var(--color-foreground);
   font-weight: 600;
 }
+
+/* Code block wrapper (syntax highlighter) */
+.code-block-wrapper {
+  position: relative;
+  group: code-block;
+}
+.code-block-wrapper .code-copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  color: #a1a1aa;
+  font-size: 11px;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.2s ease;
+}
+.code-block-wrapper:hover .code-copy-btn {
+  opacity: 1;
+}
+.code-block-wrapper .code-copy-btn:hover {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.4);
+  color: #93c5fd;
+}
+.code-block-wrapper .code-lang-badge {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  z-index: 10;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #71717a;
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Message animation */
+.animate-fade-in-up {
+  animation: fade-in-up 0.4s ease-out both;
+}
+
+/* Typing indicator */
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+}
+.typing-indicator span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #a78bfa;
+  animation: typing-dot 1.4s infinite ease-in-out both;
+}
+.typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+.typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0s; }

@@ -156,47 +156,54 @@ async def chat_endpoint(request: ChatRequest):
             )
             buffer = ""
             full_response = ""
-            in_answer = False
+            # State machine: BUFFERING → STREAMING → DONE
+            state = "BUFFERING"  # Collecting ReAct reasoning, not yet forwarding
+
             async for event in handler.stream_events():
                 if type(event).__name__ == "AgentStream":
                     delta = getattr(event, "delta", None)
-                    if delta:
-                        if not in_answer:
-                            buffer += delta
-                            # Check for "Answer:" with optional space
-                            answer_marker = None
-                            if "Answer: " in buffer:
-                                answer_marker = "Answer: "
-                            elif "Answer:" in buffer:
-                                answer_marker = "Answer:"
+                    if not delta:
+                        continue
 
-                            if answer_marker:
-                                in_answer = True
-                                answer_part = buffer.split(answer_marker, 1)[1]
+                    if state == "BUFFERING":
+                        buffer += delta
+
+                        # Case 1: Found "Answer:" marker → switch to STREAMING
+                        for marker in ("Answer: ", "Answer:"):
+                            if marker in buffer:
+                                state = "STREAMING"
+                                answer_part = buffer.split(marker, 1)[1]
                                 if answer_part:
                                     full_response += answer_part
                                     yield f"data: {answer_part}\n\n"
                                     await asyncio.sleep(0.01)
-                            elif len(buffer) > 300 and "Thought:" not in buffer:
-                                # Agent responded directly without ReAct format
-                                in_answer = True
-                                full_response += buffer
-                                yield f"data: {buffer}\n\n"
-                                await asyncio.sleep(0.01)
-                        else:
-                            full_response += delta
-                            yield f"data: {delta}\n\n"
+                                break
+
+                        # Case 2: No "Thought:" seen after 300 chars → direct answer
+                        if state == "BUFFERING" and len(buffer) > 300 and "Thought:" not in buffer:
+                            state = "STREAMING"
+                            full_response += buffer
+                            yield f"data: {buffer}\n\n"
                             await asyncio.sleep(0.01)
 
-            # If buffer was never flushed (short direct answer), yield it now
-            if not in_answer and buffer:
-                # Try to extract answer from Thought+Answer block
-                if "Answer:" in buffer:
-                    parts = buffer.split("Answer:", 1)
-                    full_response = parts[1].strip() if len(parts) > 1 else buffer
+                    elif state == "STREAMING":
+                        full_response += delta
+                        yield f"data: {delta}\n\n"
+                        await asyncio.sleep(0.01)
+
+            # Post-stream: handle buffered content that was never flushed
+            if state == "BUFFERING" and buffer:
+                # Extract answer from "Thought: ... Answer: ..." block
+                for marker in ("Answer: ", "Answer:"):
+                    if marker in buffer:
+                        answer = buffer.split(marker, 1)[1].strip()
+                        full_response = answer
+                        yield f"data: {answer}\n\n"
+                        break
                 else:
+                    # No marker found — flush entire buffer as answer
                     full_response = buffer
-                yield f"data: {full_response}\n\n"
+                    yield f"data: {buffer}\n\n"
 
             # Store the assistant response in memory
             if full_response:

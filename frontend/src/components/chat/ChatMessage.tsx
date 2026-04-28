@@ -1,7 +1,11 @@
-import React from "react";
+"use client";
+
+import React, { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { User, Bot, FileText, ExternalLink } from "lucide-react";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { User, Bot, FileText, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type Role = "user" | "assistant";
@@ -25,11 +29,66 @@ interface ChatMessageProps {
   message: Message;
 }
 
+function CodeBlock({ className, children, ...props }: React.ComponentPropsWithoutRef<"code"> & { inline?: boolean }) {
+  const [copied, setCopied] = useState(false);
+  const match = /language-(\w+)/.exec(className || "");
+  const codeString = String(children).replace(/\n$/, "");
+  const isInline = !match && !codeString.includes("\n");
+
+  if (isInline) {
+    return (
+      <code className={className} {...props}>
+        {children}
+      </code>
+    );
+  }
+
+  const language = match?.[1] || "text";
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(codeString);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="code-block-wrapper">
+      <span className="code-lang-badge">{language}</span>
+      <button onClick={handleCopy} className="code-copy-btn">
+        {copied ? (
+          <>
+            <Check className="h-3 w-3" />
+            Copied
+          </>
+        ) : (
+          <>
+            <Copy className="h-3 w-3" />
+            Copy
+          </>
+        )}
+      </button>
+      <SyntaxHighlighter
+        style={oneDark}
+        language={language}
+        PreTag="div"
+        customStyle={{
+          margin: 0,
+          padding: "2.5rem 1rem 1rem 1rem",
+          background: "transparent",
+          fontSize: "0.85em",
+        }}
+      >
+        {codeString}
+      </SyntaxHighlighter>
+    </div>
+  );
+}
+
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === "user";
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 animate-fade-in-up">
       <div
         className={cn(
           "group relative flex w-full gap-4 px-4 py-6 md:px-0",
@@ -63,8 +122,39 @@ export function ChatMessage({ message }: ChatMessageProps) {
               />
             </div>
           )}
-          <div className="prose prose-invert prose-sm md:prose-base max-w-none break-words whitespace-pre-wrap prose-pre:bg-zinc-900/50 prose-pre:border prose-pre:border-white/10 prose-pre:backdrop-blur-sm prose-a:text-blue-400 hover:prose-a:text-blue-300">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+          <div className="prose prose-invert prose-sm md:prose-base max-w-none break-words whitespace-pre-wrap prose-a:text-blue-400 hover:prose-a:text-blue-300">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                code: CodeBlock as any,
+                table({ children }) {
+                  return (
+                    <div className="overflow-x-auto my-3 rounded-lg border border-white/10">
+                      <table className="min-w-full text-sm">{children}</table>
+                    </div>
+                  );
+                },
+                thead({ children }) {
+                  return <thead className="bg-zinc-900/80 text-zinc-300">{children}</thead>;
+                },
+                th({ children }) {
+                  return (
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-zinc-400 border-b border-white/10">
+                      {children}
+                    </th>
+                  );
+                },
+                td({ children }) {
+                  return (
+                    <td className="px-3 py-2 text-zinc-300 border-b border-white/5">
+                      {children}
+                    </td>
+                  );
+                },
+              }}
+            >
+              {message.content}
+            </ReactMarkdown>
           </div>
         </div>
       </div>
