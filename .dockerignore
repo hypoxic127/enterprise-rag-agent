@@ -1,0 +1,13 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+node_modules/
+.next/
+.git/
+qdrant_data/
+frontend/
+*.egg-info/
+dist/
+build/
+.env.local

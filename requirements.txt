@@ -10,3 +10,4 @@ llama-index-llms-gemini>=0.1.6
 qdrant-client>=1.7.3
 python-dotenv>=1.0.1
 pydantic>=2.6.1
+nest_asyncio>=1.6.0
