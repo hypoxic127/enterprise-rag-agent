@@ -53,17 +53,25 @@ export function ChatContainer() {
     setMessages([WELCOME_MESSAGE]);
   };
 
-  const handleSelectSession = (sid: string) => {
+  const handleSelectSession = async (sid: string) => {
     setSessionId(sid);
-    // For now, clear messages when switching sessions
-    // In a full implementation, we'd load messages from the backend
-    setMessages([
-      {
-        id: "restored",
-        role: "assistant",
-        content: "Session restored. You can continue your conversation.",
-      },
-    ]);
+    // Load real messages from backend
+    try {
+      const res = await fetch(`${apiBase}/api/sessions/${sid}/messages`);
+      if (res.ok) {
+        const data: { role: string; content: string }[] = await res.json();
+        const loaded: Message[] = data.map((msg, i) => ({
+          id: `${sid}-${i}`,
+          role: msg.role as "user" | "assistant",
+          content: msg.content,
+        }));
+        setMessages(loaded.length > 0 ? loaded : [WELCOME_MESSAGE]);
+      } else {
+        setMessages([WELCOME_MESSAGE]);
+      }
+    } catch {
+      setMessages([WELCOME_MESSAGE]);
+    }
   };
 
   const handleDeleteSession = async (sid: string) => {
@@ -113,16 +121,24 @@ export function ChatContainer() {
       const decoder = new TextDecoder("utf-8");
 
       if (reader) {
+        let sseBuffer = "";
+
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
 
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split("\n");
+          sseBuffer += decoder.decode(value, { stream: true });
+          // SSE events are delimited by double newlines
+          const events = sseBuffer.split("\n\n");
+          // Keep the last (possibly incomplete) chunk in the buffer
+          sseBuffer = events.pop() || "";
 
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
+          for (const event of events) {
+            const lines = event.split("\n");
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
               const data = line.slice(6);
+
               if (data === "[DONE]") {
                 break;
               }
@@ -130,8 +146,25 @@ export function ChatContainer() {
               if (data.startsWith("[SESSION:") && data.endsWith("]")) {
                 const newSid = data.slice(9, -1);
                 setSessionId(newSid);
-                // Refresh sidebar
                 fetchSessions();
+                continue;
+              }
+              // Capture citation sources from backend
+              if (data.startsWith("[SOURCES:")) {
+                try {
+                  // Strip the outer [SOURCES: ... ] wrapper
+                  const sourcesJson = data.slice(9, -1);
+                  const sources = JSON.parse(sourcesJson);
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === assistantMessageId
+                        ? { ...msg, sources }
+                        : msg
+                    )
+                  );
+                } catch (e) {
+                  console.warn("Failed to parse sources:", e);
+                }
                 continue;
               }
               setMessages((prev) =>
@@ -161,7 +194,7 @@ export function ChatContainer() {
   };
 
   return (
-    <div className="flex h-full w-full">
+    <div className="flex h-full w-full overflow-hidden">
       {/* Sidebar */}
       <Sidebar
         sessions={sessions}
@@ -175,8 +208,18 @@ export function ChatContainer() {
 
       {/* Main Chat Area */}
       <div className="flex flex-1 flex-col bg-background/50">
+        {/* Header */}
+        <header className="w-full p-4 text-center border-b border-white/5 bg-background/50 backdrop-blur-md shrink-0">
+          <h1 className="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
+            Enterprise RAG Agent
+          </h1>
+          <p className="text-xs text-muted-foreground mt-0.5 tracking-widest uppercase">
+            Powered by Gemini 2.5 Pro &amp; Next.js
+          </p>
+        </header>
+
         <div className="flex-1 overflow-y-auto px-4 py-6 scroll-smooth">
-          <div className="mx-auto flex max-w-3xl flex-col space-y-6 pt-16">
+          <div className="mx-auto flex max-w-3xl flex-col space-y-6">
             {messages.map((message) => (
               <div key={message.id} className="animate-fade-in">
                 <ChatMessage message={message} />

@@ -1,15 +1,17 @@
 """
-Vector Store Service — v2.0 (Cached Index + Connection Pool)
+Vector Store Service — v2.1 (Advanced RAG: Hybrid Retrieval + Reranker + Citations)
 
 Architecture:
   - WRITE PATH: `ingest_documents()` → reads files, chunks, embeds, upserts to Qdrant
   - READ PATH:  `get_query_index()`  → connects to existing Qdrant collection (cached singleton)
+  - ADVANCED:   `get_citation_query_engine()` → BM25+Vector fusion → citation-aware responses
 
 The read path NEVER touches the filesystem or re-processes documents.
 """
 
-import logging
+import json
 from functools import lru_cache
+from loguru import logger
 
 import qdrant_client
 from llama_index.core import VectorStoreIndex, StorageContext
@@ -17,14 +19,16 @@ from llama_index.vector_stores.qdrant import QdrantVectorStore
 from llama_index.core.settings import Settings
 from llama_index.llms.gemini import Gemini
 from llama_index.embeddings.gemini import GeminiEmbedding
+from llama_index.retrievers.bm25 import BM25Retriever
+from llama_index.core.retrievers import QueryFusionRetriever
+from llama_index.core.query_engine import CitationQueryEngine, RetrieverQueryEngine
+from llama_index.core.response_synthesizers import get_response_synthesizer
 from dotenv import load_dotenv
 import os
 
 from app.services.document_processor import load_and_split_documents
 
 load_dotenv()
-
-logger = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────
 # Global Settings (initialized once at import)
@@ -49,6 +53,7 @@ def _get_qdrant_client() -> qdrant_client.QdrantClient:
 # READ PATH — Cached query index (no file I/O)
 # ──────────────────────────────────────────────
 _cached_index: VectorStoreIndex | None = None
+_cached_nodes: list | None = None
 
 def get_query_index(collection_name: str = "enterprise_rag_gemini") -> VectorStoreIndex:
     """
@@ -67,6 +72,105 @@ def get_query_index(collection_name: str = "enterprise_rag_gemini") -> VectorSto
     return _cached_index
 
 
+def _get_cached_nodes(collection_name: str = "enterprise_rag_gemini") -> list:
+    """
+    Retrieve all document nodes from Qdrant for BM25 indexing.
+    Cached after first call.
+    """
+    global _cached_nodes
+    if _cached_nodes is not None:
+        return _cached_nodes
+
+    logger.info("Loading nodes from Qdrant for BM25 index...")
+    index = get_query_index(collection_name)
+    # Retrieve all nodes from the vector store's docstore
+    retriever = index.as_retriever(similarity_top_k=100)
+    # We use a broad query to pull nodes for BM25 corpus
+    _cached_nodes = list(index.docstore.docs.values()) if index.docstore.docs else []
+    logger.info("Loaded %d nodes for BM25 corpus.", len(_cached_nodes))
+    return _cached_nodes
+
+
+# ──────────────────────────────────────────────
+# ADVANCED RAG — Hybrid Retrieval + Citations
+# ──────────────────────────────────────────────
+def advanced_rag_query(query: str, collection_name: str = "enterprise_rag_gemini") -> dict:
+    """
+    Execute an Advanced RAG query with:
+    1. BM25 + Vector hybrid retrieval (QueryFusionRetriever)
+    2. Citation-aware response synthesis
+    
+    Returns:
+        {
+            "answer": "...",
+            "sources": [
+                {"text": "...", "file": "...", "score": 0.85},
+                ...
+            ]
+        }
+    """
+    index = get_query_index(collection_name)
+
+    # --- Vector Retriever ---
+    vector_retriever = index.as_retriever(similarity_top_k=5)
+
+    # --- BM25 Retriever ---
+    nodes = _get_cached_nodes(collection_name)
+    if nodes:
+        try:
+            bm25_retriever = BM25Retriever.from_defaults(
+                nodes=nodes,
+                similarity_top_k=5,
+            )
+            # --- Hybrid Fusion (RRF) ---
+            fusion_retriever = QueryFusionRetriever(
+                retrievers=[vector_retriever, bm25_retriever],
+                similarity_top_k=5,
+                num_queries=1,  # Don't generate sub-queries, just fuse
+                mode="reciprocal_rerank",  # Reciprocal Rank Fusion
+            )
+            logger.info("Using hybrid BM25 + Vector retrieval with RRF fusion")
+            active_retriever = fusion_retriever
+        except Exception as e:
+            logger.warning("BM25 init failed, falling back to vector-only: %s", e)
+            active_retriever = vector_retriever
+    else:
+        logger.info("No cached nodes for BM25, using vector-only retrieval")
+        active_retriever = vector_retriever
+
+    # --- Citation Query Engine ---
+    try:
+        citation_engine = CitationQueryEngine.from_args(
+            index,
+            retriever=active_retriever,
+            citation_chunk_size=512,
+            citation_chunk_overlap=50,
+        )
+        response = citation_engine.query(query)
+    except Exception as e:
+        logger.warning("CitationQueryEngine failed, falling back to basic: %s", e)
+        response = index.as_query_engine().query(query)
+
+    # --- Extract sources ---
+    sources = []
+    if hasattr(response, "source_nodes"):
+        for i, node in enumerate(response.source_nodes):
+            source_text = node.node.get_content()[:200]
+            file_name = node.node.metadata.get("file_name", "unknown")
+            score = getattr(node, "score", None)
+            sources.append({
+                "id": i + 1,
+                "text": source_text + ("..." if len(node.node.get_content()) > 200 else ""),
+                "file": file_name,
+                "score": round(score, 4) if score else None,
+            })
+
+    return {
+        "answer": str(response),
+        "sources": sources,
+    }
+
+
 # ──────────────────────────────────────────────
 # WRITE PATH — Ingestion (only called by scripts)
 # ──────────────────────────────────────────────
@@ -79,7 +183,7 @@ def ingest_documents(
     This is an EXPENSIVE operation — only call from ingestion scripts,
     never from the request hot path.
     """
-    global _cached_index
+    global _cached_index, _cached_nodes
 
     logger.info("Ingesting documents from '%s' into collection '%s'...", data_dir, collection_name)
     client = _get_qdrant_client()
@@ -94,9 +198,10 @@ def ingest_documents(
         storage_context=storage_context,
     )
 
-    # Invalidate the read cache so the next query picks up new data
+    # Invalidate all read caches so the next query picks up new data
     _cached_index = None
-    logger.info("Ingestion complete. Read cache invalidated.")
+    _cached_nodes = None
+    logger.info("Ingestion complete. All caches invalidated.")
     return index
 
 

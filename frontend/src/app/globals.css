@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/* Prevent body scroll caused by Next.js dev tools badge or other injections */
+html, body {
+  overflow: clip;
+  height: 100dvh;
+}
+
 @theme {
   --color-background: #09090b;
   --color-foreground: #fafafa;

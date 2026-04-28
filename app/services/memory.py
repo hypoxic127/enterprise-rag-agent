@@ -5,15 +5,13 @@ Stores chat history per session_id with automatic TTL cleanup.
 For production, replace with Redis-backed implementation.
 """
 
-import logging
 import time
 import threading
 from collections import OrderedDict
 from typing import Optional
 from dataclasses import dataclass, field
 from llama_index.core.llms import ChatMessage, MessageRole
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 # Maximum messages per session (sliding window)
 MAX_MESSAGES_PER_SESSION = 50
@@ -122,6 +120,18 @@ class ChatMemoryStore:
                 logger.info("Expired session: %s", sid)
             
             return list(reversed(result))  # Newest first
+
+    def get_messages(self, session_id: str) -> list[dict] | None:
+        """Get raw message list for a session (for frontend display)."""
+        with self._lock:
+            if session_id not in self._sessions:
+                return None
+            session = self._sessions[session_id]
+            session.last_active = time.time()
+            return [
+                {"role": msg["role"], "content": msg["content"]}
+                for msg in session.messages
+            ]
 
     def delete_session(self, session_id: str) -> bool:
         """Delete a session."""

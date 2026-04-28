@@ -12,15 +12,14 @@ Usage:
 import os
 import sys
 import argparse
-import logging
 
 # Ensure app modules are importable
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.services.vector_store import ingest_documents
+from app.core.logger import setup_logging
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger(__name__)
+logger = setup_logging()
 
 
 def main():
