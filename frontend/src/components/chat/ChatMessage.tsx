@@ -27,6 +27,7 @@ export interface Message {
 
 interface ChatMessageProps {
   message: Message;
+  isStreaming?: boolean;
 }
 
 function CodeBlock({ className, children, ...props }: React.ComponentPropsWithoutRef<"code"> & { inline?: boolean }) {
@@ -84,7 +85,7 @@ function CodeBlock({ className, children, ...props }: React.ComponentPropsWithou
   );
 }
 
-export function ChatMessage({ message }: ChatMessageProps) {
+export function ChatMessage({ message, isStreaming = false }: ChatMessageProps) {
   const isUser = message.role === "user";
 
   return (
@@ -122,39 +123,48 @@ export function ChatMessage({ message }: ChatMessageProps) {
               />
             </div>
           )}
-          <div className="prose prose-invert prose-sm md:prose-base max-w-none break-words whitespace-pre-wrap prose-a:text-blue-400 hover:prose-a:text-blue-300">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                code: CodeBlock as any,
-                table({ children }) {
-                  return (
-                    <div className="overflow-x-auto my-3 rounded-lg border border-white/10">
-                      <table className="min-w-full text-sm">{children}</table>
-                    </div>
-                  );
-                },
-                thead({ children }) {
-                  return <thead className="bg-zinc-900/80 text-zinc-300">{children}</thead>;
-                },
-                th({ children }) {
-                  return (
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-zinc-400 border-b border-white/10">
-                      {children}
-                    </th>
-                  );
-                },
-                td({ children }) {
-                  return (
-                    <td className="px-3 py-2 text-zinc-300 border-b border-white/5">
-                      {children}
-                    </td>
-                  );
-                },
-              }}
-            >
-              {message.content}
-            </ReactMarkdown>
+          <div className={cn(
+              "prose prose-invert prose-sm md:prose-base max-w-none break-words whitespace-pre-wrap prose-a:text-blue-400 hover:prose-a:text-blue-300",
+              isStreaming && "streaming-cursor"
+            )}>
+            {isStreaming ? (
+              /* During streaming: render as plain text to avoid broken markdown */
+              <p>{message.content}</p>
+            ) : (
+              /* After streaming: render full markdown */
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  code: CodeBlock as any,
+                  table({ children }) {
+                    return (
+                      <div className="overflow-x-auto my-3 rounded-lg border border-white/10">
+                        <table className="min-w-full text-sm">{children}</table>
+                      </div>
+                    );
+                  },
+                  thead({ children }) {
+                    return <thead className="bg-zinc-900/80 text-zinc-300">{children}</thead>;
+                  },
+                  th({ children }) {
+                    return (
+                      <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-zinc-400 border-b border-white/10">
+                        {children}
+                      </th>
+                    );
+                  },
+                  td({ children }) {
+                    return (
+                      <td className="px-3 py-2 text-zinc-300 border-b border-white/5">
+                        {children}
+                      </td>
+                    );
+                  },
+                }}
+              >
+                {message.content}
+              </ReactMarkdown>
+            )}
           </div>
         </div>
       </div>

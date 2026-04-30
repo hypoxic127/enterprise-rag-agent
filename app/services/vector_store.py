@@ -24,18 +24,17 @@ from llama_index.core.retrievers import QueryFusionRetriever
 from llama_index.core.query_engine import CitationQueryEngine, RetrieverQueryEngine
 from llama_index.core.response_synthesizers import get_response_synthesizer
 from dotenv import load_dotenv
-import os
 
 from app.services.document_processor import load_and_split_documents
+from app.core.config import GOOGLE_API_KEY, QDRANT_HOST, QDRANT_PORT
 
 load_dotenv()
 
 # ──────────────────────────────────────────────
 # Global Settings (initialized once at import)
 # ──────────────────────────────────────────────
-_api_key = os.getenv("GOOGLE_API_KEY", "")
-Settings.embed_model = GeminiEmbedding(model_name="models/gemini-embedding-001", api_key=_api_key)
-Settings.llm = Gemini(model="models/gemini-2.5-pro", api_key=_api_key)
+Settings.embed_model = GeminiEmbedding(model_name="models/gemini-embedding-001", api_key=GOOGLE_API_KEY)
+Settings.llm = Gemini(model="models/gemini-2.5-pro", api_key=GOOGLE_API_KEY)
 
 # ──────────────────────────────────────────────
 # Singleton Qdrant Client (Connection Pool)
@@ -43,10 +42,8 @@ Settings.llm = Gemini(model="models/gemini-2.5-pro", api_key=_api_key)
 @lru_cache(maxsize=1)
 def _get_qdrant_client() -> qdrant_client.QdrantClient:
     """Create a single, reusable Qdrant client connection."""
-    host = os.getenv("QDRANT_HOST", "localhost")
-    port = int(os.getenv("QDRANT_PORT", "6333"))
-    logger.info("Creating Qdrant client → %s:%d", host, port)
-    return qdrant_client.QdrantClient(host=host, port=port)
+    logger.info("Creating Qdrant client → %s:%d", QDRANT_HOST, QDRANT_PORT)
+    return qdrant_client.QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
 
 
 # ──────────────────────────────────────────────
@@ -94,40 +91,73 @@ def _get_cached_nodes(collection_name: str = "enterprise_rag_gemini") -> list:
 # ──────────────────────────────────────────────
 # ADVANCED RAG — Hybrid Retrieval + Citations
 # ──────────────────────────────────────────────
-def advanced_rag_query(query: str, collection_name: str = "enterprise_rag_gemini") -> dict:
+def advanced_rag_query(
+    query: str,
+    collection_name: str = "enterprise_rag_gemini",
+    user_access_tags: list[str] | None = None,
+) -> dict:
     """
     Execute an Advanced RAG query with:
     1. BM25 + Vector hybrid retrieval (QueryFusionRetriever)
-    2. Citation-aware response synthesis
+    2. Optional RBAC filtering via Qdrant metadata payload
+    3. Citation-aware response synthesis
     
+    Args:
+        query: The search query.
+        collection_name: Qdrant collection to search.
+        user_access_tags: List of access tags from user's JWT roles.
+            If provided, only documents with matching `access_roles` metadata
+            will be returned.
+
     Returns:
-        {
-            "answer": "...",
-            "sources": [
-                {"text": "...", "file": "...", "score": 0.85},
-                ...
-            ]
-        }
+        {"answer": "...", "sources": [...]}
     """
+    from qdrant_client.models import Filter, FieldCondition, MatchAny
+
     index = get_query_index(collection_name)
 
-    # --- Vector Retriever ---
-    vector_retriever = index.as_retriever(similarity_top_k=5)
+    # --- Build RBAC metadata filter ---
+    qdrant_filters = None
+    if user_access_tags:
+        qdrant_filters = Filter(
+            should=[
+                FieldCondition(
+                    key="access_roles",
+                    match=MatchAny(any=user_access_tags),
+                ),
+            ]
+        )
+        logger.info("RBAC filter applied: access_tags=%s", user_access_tags)
+
+    # --- Vector Retriever (with optional RBAC filter) ---
+    retriever_kwargs = {"similarity_top_k": 5}
+    if qdrant_filters:
+        retriever_kwargs["filters"] = qdrant_filters
+    vector_retriever = index.as_retriever(**retriever_kwargs)
 
     # --- BM25 Retriever ---
     nodes = _get_cached_nodes(collection_name)
     if nodes:
+        # If RBAC is active, filter BM25 nodes by access_roles
+        active_nodes = nodes
+        if user_access_tags:
+            active_nodes = [
+                n for n in nodes
+                if set(n.metadata.get("access_roles", ["all"])) & set(user_access_tags)
+            ]
+            logger.info("BM25 nodes filtered: %d/%d by RBAC", len(active_nodes), len(nodes))
+
         try:
             bm25_retriever = BM25Retriever.from_defaults(
-                nodes=nodes,
+                nodes=active_nodes if active_nodes else nodes,
                 similarity_top_k=5,
             )
             # --- Hybrid Fusion (RRF) ---
             fusion_retriever = QueryFusionRetriever(
                 retrievers=[vector_retriever, bm25_retriever],
                 similarity_top_k=5,
-                num_queries=1,  # Don't generate sub-queries, just fuse
-                mode="reciprocal_rerank",  # Reciprocal Rank Fusion
+                num_queries=1,
+                mode="reciprocal_rerank",
             )
             logger.info("Using hybrid BM25 + Vector retrieval with RRF fusion")
             active_retriever = fusion_retriever
@@ -177,11 +207,17 @@ def advanced_rag_query(query: str, collection_name: str = "enterprise_rag_gemini
 def ingest_documents(
     data_dir: str = "data",
     collection_name: str = "enterprise_rag_gemini",
+    access_roles_map: dict[str, list[str]] | None = None,
 ) -> VectorStoreIndex:
     """
     Read documents from disk, chunk, embed, and upsert into Qdrant.
     This is an EXPENSIVE operation — only call from ingestion scripts,
     never from the request hot path.
+
+    Args:
+        data_dir: Directory containing documents.
+        collection_name: Target Qdrant collection.
+        access_roles_map: Optional mapping of filename → access roles for RBAC.
     """
     global _cached_index, _cached_nodes
 
@@ -190,7 +226,7 @@ def ingest_documents(
     vector_store = QdrantVectorStore(client=client, collection_name=collection_name)
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
-    nodes = load_and_split_documents(data_dir)
+    nodes = load_and_split_documents(data_dir, access_roles_map=access_roles_map)
     logger.info("Loaded %d nodes, upserting to Qdrant...", len(nodes))
 
     index = VectorStoreIndex(
@@ -204,11 +240,3 @@ def ingest_documents(
     logger.info("Ingestion complete. All caches invalidated.")
     return index
 
-
-# ──────────────────────────────────────────────
-# Backwards-compat alias (deprecated, will remove in v2.1)
-# ──────────────────────────────────────────────
-def get_vector_index(collection_name: str = "enterprise_rag_gemini", data_dir: str = "data"):
-    """DEPRECATED: Use get_query_index() for reads or ingest_documents() for writes."""
-    logger.warning("get_vector_index() is deprecated. Use get_query_index() or ingest_documents().")
-    return ingest_documents(data_dir=data_dir, collection_name=collection_name)

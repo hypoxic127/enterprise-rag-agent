@@ -6,7 +6,6 @@ Development: Falls back to in-memory store if Redis is unavailable.
 """
 
 import json
-import os
 import time
 import threading
 from collections import OrderedDict
@@ -260,10 +259,10 @@ class InMemoryStore:
 # Factory: Redis → InMemory fallback
 # ──────────────────────────────────────────────
 def _create_store():
-    redis_url = os.getenv("REDIS_URL")
-    if redis_url:
+    from app.core.config import REDIS_URL
+    if REDIS_URL:
         try:
-            return RedisMemoryStore(redis_url)
+            return RedisMemoryStore(REDIS_URL)
         except Exception as e:
             logger.warning("Redis connection failed (%s), falling back to in-memory store", e)
     return InMemoryStore()

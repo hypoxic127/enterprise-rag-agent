@@ -23,6 +23,7 @@ const WELCOME_MESSAGE: Message = {
 export function ChatContainer() {
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
   const [isLoading, setIsLoading] = useState(false);
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -109,10 +110,9 @@ export function ChatContainer() {
     setIsLoading(true);
 
     const assistantMessageId = (Date.now() + 1).toString();
-    setMessages((prev) => [
-      ...prev,
-      { id: assistantMessageId, role: "assistant", content: "" },
-    ]);
+    // Don't create the message bubble or set streaming yet
+    // — will be created on first SSE character to avoid empty bubble during thinking
+    let messageCreated = false;
 
     try {
       const response = await fetch(`${apiBase}/api/chat`, {
@@ -179,13 +179,23 @@ export function ChatContainer() {
                 }
                 continue;
               }
-              setMessages((prev) =>
-                prev.map((msg) =>
-                  msg.id === assistantMessageId
-                    ? { ...msg, content: msg.content + data }
-                    : msg
-                )
-              );
+              // Create message bubble on first content character
+              if (!messageCreated) {
+                messageCreated = true;
+                setMessages((prev) => [
+                  ...prev,
+                  { id: assistantMessageId, role: "assistant", content: data },
+                ]);
+                setStreamingMessageId(assistantMessageId);
+              } else {
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === assistantMessageId
+                      ? { ...msg, content: msg.content + data }
+                      : msg
+                  )
+                );
+              }
             }
           }
         }
@@ -202,6 +212,7 @@ export function ChatContainer() {
       ]);
     } finally {
       setIsLoading(false);
+      setStreamingMessageId(null);
     }
   };
 
@@ -234,7 +245,10 @@ export function ChatContainer() {
           <div className="mx-auto flex max-w-3xl flex-col space-y-6">
             {messages.map((message, index) => (
               <div key={message.id}>
-                <ChatMessage message={message} />
+                <ChatMessage
+                  message={message}
+                  isStreaming={message.id === streamingMessageId}
+                />
                 {index === 0 && message.id === "welcome" && messages.length === 1 && (
                   <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-3 px-4 md:px-0">
                     {SUGGESTIONS.map((suggestion, i) => (
@@ -255,8 +269,8 @@ export function ChatContainer() {
                 )}
               </div>
             ))}
-            {/* Typing indicator */}
-            {isLoading && (
+            {/* Typing indicator — only show before streaming starts */}
+            {isLoading && !streamingMessageId && (
               <div className="flex gap-4 px-4 md:px-0 animate-fade-in-up">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-purple-500/30 bg-purple-500/20 text-purple-300 shadow-sm">
                   <Bot className="h-4 w-4" />

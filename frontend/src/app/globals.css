@@ -205,3 +205,17 @@ html, body {
 .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
 .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
 .typing-indicator span:nth-child(3) { animation-delay: 0s; }
+
+/* Typewriter blinking cursor */
+@keyframes blink-cursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+.streaming-cursor::after {
+  content: "▎";
+  display: inline;
+  color: #a78bfa;
+  animation: blink-cursor 0.8s step-end infinite;
+  font-weight: 300;
+  margin-left: 1px;
+}

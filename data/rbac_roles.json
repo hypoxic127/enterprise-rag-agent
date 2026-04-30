@@ -1,0 +1,7 @@
+{
+    "mock_data.txt": ["all"],
+    "salary_report.pdf": ["executive"],
+    "engineering_handbook.md": ["engineering", "management"],
+    "company_policies.pdf": ["internal"],
+    "board_minutes.pdf": ["executive", "management"]
+}

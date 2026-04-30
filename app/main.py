@@ -1,26 +1,50 @@
 import nest_asyncio
 nest_asyncio.apply()
 
-import os
+
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.chat import router as chat_router
+from app.api.channels import router as channels_router
 import uvicorn
 from app.core.logger import setup_logging
+from app.core.config import CORS_ORIGINS, validate_production_config
 from loguru import logger
 import time
 from prometheus_fastapi_instrumentator import Instrumentator
-import phoenix as px
-from openinference.instrumentation.llama_index import LlamaIndexInstrumentor
 
 # Setup structured logging
 setup_logging()
 
-# Initialize Phoenix Tracing & LLM Observability
-px.launch_app()
-LlamaIndexInstrumentor().instrument()
 
-app = FastAPI(title="Enterprise-RAG-Agent API")
+# ──────────────────────────────────────────────
+# FastAPI Lifespan — Startup/Shutdown hooks
+# ──────────────────────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifecycle: validate config, start observability."""
+    # Startup
+    validate_production_config()
+
+    # Initialize Phoenix Tracing & LLM Observability (lazy, not at import time)
+    try:
+        import phoenix as px
+        from openinference.instrumentation.llama_index import LlamaIndexInstrumentor
+        px.launch_app()
+        LlamaIndexInstrumentor().instrument()
+        logger.info("Phoenix observability initialized")
+    except Exception as e:
+        logger.warning("Phoenix init skipped: %s", e)
+
+    logger.info("Enterprise RAG Agent v3.0 started")
+    yield
+    # Shutdown
+    logger.info("Enterprise RAG Agent shutting down")
+
+
+app = FastAPI(title="Enterprise-RAG-Agent API", lifespan=lifespan)
 
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
@@ -34,17 +58,17 @@ async def add_process_time_header(request: Request, call_next):
 # Initialize Prometheus Instrumentator
 Instrumentator().instrument(app).expose(app, include_in_schema=False, should_gzip=True)
 
-# CORS: defaults to localhost:3000 for dev; set CORS_ORIGINS env var for production
-cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+# CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(chat_router, prefix="/api")
+app.include_router(channels_router, prefix="/api")
 
 @app.get("/")
 def read_root():
@@ -52,7 +76,7 @@ def read_root():
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "Enterprise-RAG-Agent"}
+    return {"status": "ok", "service": "Enterprise-RAG-Agent", "version": "3.0"}
 
 if __name__ == "__main__":
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)

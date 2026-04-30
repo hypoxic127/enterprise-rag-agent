@@ -37,3 +37,9 @@ Thumbs.db
 # Debug & Test Scripts
 debug_rag.py
 scripts/test_embeddings.py
+
+# Test caches
+.pytest_cache/
+
+# Frontend env
+frontend/.env.local
